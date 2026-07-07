@@ -28,6 +28,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # galbot_mcap
 from galbot_mcap import decimate_indices, read_episode  # noqa: E402
 
 SOURCE_FPS = 30.0
+# locate-anything 仓库默认在 moon-galbot 的上一级（与 pyproject 的 path source
+# `../eagle/Embodied` 同一相对关系），换机器无需改。可用 --la-repo 覆盖。
+DEFAULT_LA_REPO = Path(__file__).resolve().parents[2] / "eagle" / "Embodied"
 XY = tuple[float, float] | None
 
 
@@ -119,7 +122,7 @@ def main() -> None:
     p.add_argument("--bin-label")
     p.add_argument("--fps", type=float, default=15.0)
     p.add_argument("--model", default="nvidia/LocateAnything-3B")
-    p.add_argument("--la-repo", type=Path, default=Path("/home/galbot/eagle/Embodied"))
+    p.add_argument("--la-repo", type=Path, default=DEFAULT_LA_REPO)
     p.add_argument("--max-episodes", type=int, default=None)
     p.add_argument("--selfcheck", action="store_true", help="只跑离线自检，不加载模型")
     args = p.parse_args()
