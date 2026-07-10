@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "G1 语音抓取：VLM 解耦 + 视觉标记 + ACT 数据处理管线"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "edge-tts>=7.2.8",
     "lerobot",              # git 源见下方 [tool.uv.sources]；PyPI 的 0.1.0 无 ACT
     "locate-anything",      # 本地包，带 transformers/triton 等 pin
     "mcap>=1.4.0",

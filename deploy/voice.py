@@ -22,9 +22,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # KWS 物料标签 → locate-anything 检测短语。按比赛物料在此 + 服务 keywords.txt 同步扩充。
 OBJECT_LABELS: dict[str, str] = {
-    "cola": "cola bottle", "red_cup": "red cup", "apple": "apple",
-    "bottle": "bottle", "screwdriver": "screwdriver", "banana": "banana",
+    "cola": "cola bottle",
+    "green_bottle": "green bottle",
 }
+# KWS 标签 → 中文播报名（仅 TTS 用；检测短语仍是英文喂 VLM）
+DISPLAY_NAMES: dict[str, str] = {"cola": "可乐", "green_bottle": "雪碧"}
 # KWS 修正标签 → (字段, 方向)。图像坐标：上=y 减小，左=x 减小。
 CORRECTION_LABELS: dict[str, tuple[str, int]] = {
     "corr_up": ("dy", -1), "corr_down": ("dy", +1),
@@ -65,12 +67,15 @@ class VoiceMicClient:
         if self.tts is not None:
             self.tts(text)
 
+    def _handle_wakeup(self, data: dict | None = None) -> None:
+        self.say("我在，请说要拿什么")
+
     def _handle_label(self, label: str) -> None:
         kind, payload = route_label(label, self.object_labels, self.correction_labels)
         if kind == "target":
             self.current_obj = label
             self.shared.set_labels(payload, self.bin_label)
-            self.say(f"好的，去拿 {label}")
+            self.say(f"好的，去拿{DISPLAY_NAMES.get(label, label)}")
         elif kind == "correction":
             if self.current_obj is None:
                 self.say("还没有目标，请先说要拿什么")
@@ -95,7 +100,12 @@ class VoiceMicClient:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            if msg.get("type") == "kwd_cmd":
+            msg_type = msg.get("type")
+            if msg_type == "waken_up":
+                print(f"[kws] waken_up")
+                data = msg.get("data")
+                self._handle_wakeup(data if isinstance(data, dict) else None)
+            elif msg.get("type") == "kwd_cmd":
                 data = msg.get("data")
                 if isinstance(data, str):
                     print(f"[kws] {data}")

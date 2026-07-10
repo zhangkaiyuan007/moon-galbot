@@ -121,7 +121,8 @@ def main() -> None:
                 print("[no-voice] VLM 未定位到目标，检查检测词/相机")
         else:
             # —— 语音模式：消费 on-robot mic 服务 ——
-            voice = VoiceMicClient(shared, mem, args.mic_addr)
+            from tts import make_tts
+            voice = VoiceMicClient(shared, mem, args.mic_addr, tts=make_tts(robot))
             voice.start()
             voice.say("准备好了，请说要拿什么")
             last_cmd = 0
