@@ -22,6 +22,17 @@ from config import VLM_REFRESH_HZ  # noqa: E402
 
 XY = tuple[float, float] | None
 
+# 8GB 卡上 vision attention 是 O(patch²)。1280x960(6188 patch) 会 OOM，960x720(3468) 峰值 4.73GiB。
+# 喂 VLM 前缩到这个上界；检测坐标再按比例还原回原图，供 policy_runtime 在原分辨率画标记。
+VLM_INPUT_MAX_WH = (960, 720)
+
+
+def _rescale_center(c: XY, src_wh: tuple[int, int], dst_wh: tuple[int, int]) -> XY:
+    """把在 src_wh 图上检出的中心，按比例映射回 dst_wh(原图) 坐标系。"""
+    if c is None:
+        return None
+    return (c[0] * dst_wh[0] / src_wh[0], c[1] * dst_wh[1] / src_wh[1])
+
 
 def _largest_box_center(boxes: list[dict]) -> XY:
     """最大框中心；与 tools/detect_markers.py 一致，保证训练/部署同语义。"""
@@ -33,7 +44,7 @@ def _largest_box_center(boxes: list[dict]) -> XY:
 
 class VLMWorker:
     def __init__(self, robot, shared, model_path: str, la_repo: str | Path,
-                 refresh_hz: float = VLM_REFRESH_HZ):
+                 refresh_hz: float = VLM_REFRESH_HZ, load_in_4bit: bool = False):
         self.robot = robot
         self.shared = shared
         self.period = 1.0 / refresh_hz
@@ -42,7 +53,7 @@ class VLMWorker:
 
         sys.path.insert(0, str(la_repo))
         from locateanything_worker import LocateAnythingWorker
-        self.worker = LocateAnythingWorker(model_path)
+        self.worker = LocateAnythingWorker(model_path, load_in_4bit=load_in_4bit)
         self.parse_boxes = LocateAnythingWorker.parse_boxes
 
     def _grab_head(self) -> Image.Image:
@@ -55,8 +66,17 @@ class VLMWorker:
         return Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
 
     def _detect(self, img: Image.Image, label: str) -> XY:
-        ans = self.worker.ground_single(img, label)["answer"]
-        return _largest_box_center(self.parse_boxes(ans, img.width, img.height))
+        # 大图缩到显存安全上界再喂 VLM；坐标在缩图尺度解析，末尾还原回原图。
+        if img.width > VLM_INPUT_MAX_WH[0] or img.height > VLM_INPUT_MAX_WH[1]:
+            small = img.resize(VLM_INPUT_MAX_WH, Image.BILINEAR)
+        else:
+            small = img
+        ans = self.worker.ground_single(small, label)["answer"]
+        boxes = self.parse_boxes(ans, small.width, small.height)
+        if not boxes:  # 诊断：框不到时看模型原始输出，判断是没检测到还是解析问题
+            print(f"[vlm] '{label}' @{small.width}x{small.height} 未框到; raw={ans[:200]!r}")
+        c = _largest_box_center(boxes)
+        return _rescale_center(c, (small.width, small.height), (img.width, img.height))
 
     def _loop(self) -> None:
         while not self._stop.is_set():
@@ -79,4 +99,18 @@ class VLMWorker:
     def stop(self) -> None:
         self._stop.set()
         if self._thread:
-            self._thread.join(timeout=2.0)
+            # 单次生成可达 2.6s，join 要够长让线程从推理里退出，否则 destroy 时
+            # 线程还在用 CUDA 会 "terminate called" abort。
+            self._thread.join(timeout=8.0)
+
+
+def _selfcheck() -> None:
+    # 缩图上 (480,360) 中心 → 原图 1280x960 应还原到 (640,480)
+    c = _rescale_center((480, 360), (960, 720), (1280, 960))
+    assert c == (640.0, 480.0), c
+    assert _rescale_center(None, (960, 720), (1280, 960)) is None
+    print("vlm_worker selfcheck OK")
+
+
+if __name__ == "__main__":
+    _selfcheck()

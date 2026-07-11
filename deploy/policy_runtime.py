@@ -120,15 +120,24 @@ class PolicyRuntime:
         self.did_grasp = False
         self.still_chunks = 0
 
+    def _grab(self, sensor, tries: int = 15) -> dict:
+        """相机偶发丢帧(返回无 'data')时重试等下一帧，避免 execute 中途崩。"""
+        for _ in range(tries):
+            c = self.robot.get_rgb_data(sensor)
+            if c and "data" in c:
+                return c
+            time.sleep(0.02)
+        raise RuntimeError(f"{sensor} 连续 {tries} 次无帧数据")
+
     def capture(self) -> tuple[dict, np.ndarray]:
         from galbot_sdk.g1 import SensorType
 
-        head = decode_rgb(self.robot.get_rgb_data(SensorType.HEAD_LEFT_CAMERA))
+        head = decode_rgb(self._grab(SensorType.HEAD_LEFT_CAMERA))
         target_xy, bin_xy, _ = self.shared.get_centers()
         target_xy = self.correction.apply_offset(self.target_obj, target_xy)  # 修正偏移
         head = draw_markers(head, target_xy, bin_xy)                          # 原分辨率画点
         head = cv2.resize(head, HEAD_SIZE_WH, interpolation=cv2.INTER_AREA)
-        wrist = decode_rgb(self.robot.get_rgb_data(SensorType.RIGHT_ARM_CAMERA))
+        wrist = decode_rgb(self._grab(SensorType.RIGHT_ARM_CAMERA))
         arm_q = np.array(self.robot.get_joint_positions([ARM_GROUP], []), dtype=np.float32)
         grip = float(np.clip(
             self.robot.get_gripper_state(GRIPPER_NAME).width / GRIPPER_FULL_OPEN_M, 0.0, 1.0))

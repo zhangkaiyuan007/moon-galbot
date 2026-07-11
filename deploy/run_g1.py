@@ -19,9 +19,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
+
+# 减少显存碎片（错误信息里 PyTorch 自己的建议）。必须在 import torch 前设置。
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from config import (  # noqa: E402
@@ -57,8 +61,9 @@ def go_home(robot, gm) -> None:
     robot.set_gripper_command(GRIPPER_NAME, GRIPPER_FULL_OPEN_M, GRIP_VELOCITY_MPS, 30, True)
 
 
-def wait_for_center(shared: SharedState, timeout: float = 3.0) -> bool:
-    """新目标后等 VLM 至少产出一次目标中心，避免对着旧/空标记就动。"""
+def wait_for_center(shared: SharedState, timeout: float = 20.0) -> bool:
+    """新目标后等 VLM 至少产出一次目标中心，避免对着旧/空标记就动。
+    首轮要 target+bin 两次生成(int4 每次~2.6s)加首次 warmup，故给 20s 余量。"""
     t0 = time.monotonic()
     while time.monotonic() - t0 < timeout:
         if shared.get_centers()[0] is not None:
@@ -80,6 +85,8 @@ def main() -> None:
                    help="语音模式：galbot-mic-service 的 ZMQ 地址 tcp://<机器人IP>:6000")
     p.add_argument("--execute", action="store_true", help="真动机器人（默认 dry-run）")
     p.add_argument("--go-home", action="store_true", help="先回采集姿态")
+    p.add_argument("--vlm-full", action="store_true",
+                   help="VLM 用全精度 bf16(~6GB)；默认 4-bit 量化(~2GB) 以适配 8GB 显存")
     p.add_argument("--slow", type=float, default=1.0)
     p.add_argument("--max-chunks", type=int, default=90)
     args = p.parse_args()
@@ -97,6 +104,10 @@ def main() -> None:
         if not robot.init({SensorType.HEAD_LEFT_CAMERA, SensorType.RIGHT_ARM_CAMERA}):
             raise SystemExit("GalbotRobot init failed")
         time.sleep(3)
+        # 打印当前实际姿态：把机器人摆到你采集数据时的起手姿态，启动一次即可抄进 config 的 HOME_*
+        for g in ("leg", "head", ARM_GROUP):
+            q = [round(v, 4) for v in robot.get_joint_positions([g], [])]
+            print(f"[pose] {g} = {q}")
         if args.go_home and args.execute:
             confirm_or_exit(f"回采集姿态？arm {HOME_RIGHT_ARM}")
             go_home(robot, gm)
@@ -104,7 +115,7 @@ def main() -> None:
         shared = SharedState()
         mem = CorrectionMemory(args.memory)
         policy = ACTPolicyWrapper(args.checkpoint)
-        vlm = VLMWorker(robot, shared, args.model, args.la_repo)
+        vlm = VLMWorker(robot, shared, args.model, args.la_repo, load_in_4bit=not args.vlm_full)
         vlm.start()
         runtime = PolicyRuntime(robot, gm, policy, shared, mem, target_obj="", slow=args.slow)
         voice = None
