@@ -22,6 +22,7 @@ import numpy as np
 import torch
 
 HEAD_KEY = "observation.images.head"
+KEEP_FRAC = 0.055  # 保留区半径=图宽*此值(点周围留一圈原图)；必须与 tools/markers.py 一致
 
 
 def _centroid(hsv_ok: np.ndarray):
@@ -39,9 +40,14 @@ def _point_only(img_chw: torch.Tensor) -> torch.Tensor:
     blue = (b > 150) & (r < 110) & (g < 110)
     h, w = a.shape[:2]
     rad = max(4, round(w / 91))                  # 与原图 1280→r14 同比例
-    out = np.zeros_like(a)
-    for mask, color in ((green, (0, 255, 0)), (blue, (0, 0, 255))):
-        c = _centroid(mask)
+    keep_r = max(rad * 2, round(w * KEEP_FRAC))
+    cg, cb = _centroid(green), _centroid(blue)
+    keep = np.zeros((h, w), np.uint8)            # 只保留点周围一圈原图，其余抹黑
+    for c in (cg, cb):
+        if c is not None:
+            cv2.circle(keep, c, keep_r, 1, -1)
+    out = np.where(keep[..., None] > 0, a, 0).astype(np.uint8)
+    for c, color in ((cg, (0, 255, 0)), (cb, (0, 0, 255))):
         if c is not None:
             cv2.circle(out, c, rad, color, thickness=-1)
     return torch.from_numpy(out.transpose(2, 0, 1).astype(np.float32) / 255.0)

@@ -15,9 +15,10 @@ import numpy as np
 TARGET_COLOR = (0, 255, 0)   # 目标物：绿
 BIN_COLOR = (0, 0, 255)      # 框：蓝
 RADIUS = 14                  # 原分辨率下半径(px)；0.5x resize 后约 7px
-# 纯点图模式：头相机输入=黑底+目标/框点，抹掉一切背景纹理，逼策略只能从点读位置
-# (对抗 causal confusion)。头相机只做全局定位，精抓靠腕相机。改了必须重跑阶段 B + 重训。
+# 背景抹黑模式：只保留每个标记点周围一圈原图(留物体局部纹理)，其余抹黑，逼策略从点
+# 读位置(对抗 causal confusion)。KEEP_FRAC=0 就是纯点图。改了必须重训，且训练端一致。
 MASK_BACKGROUND = True
+KEEP_FRAC = 0.055            # 保留区半径 = 图宽 * 此值(点周围留一圈原图)；训练端必须同值
 
 XY = tuple[float, float] | None
 
@@ -34,7 +35,14 @@ def draw_markers(
     """在 rgb 上画目标/框中心实心圆点，返回新图(不改分辨率)。None 的那个不画。"""
     import cv2
 
-    out = np.zeros_like(rgb) if MASK_BACKGROUND else rgb.copy()  # 纯点图=黑底
+    out = rgb.copy()
+    if MASK_BACKGROUND:  # 只保留每个点周围一圈原图，其余抹黑
+        keep_r = max(radius * 2, round(rgb.shape[1] * KEEP_FRAC))
+        keep = np.zeros(rgb.shape[:2], np.uint8)
+        for xy in (target_xy, bin_xy):
+            if xy is not None:
+                cv2.circle(keep, (int(round(xy[0])), int(round(xy[1]))), keep_r, 1, -1)
+        out[keep == 0] = 0
     for xy, color in ((target_xy, target_color), (bin_xy, bin_color)):
         if xy is None:
             continue
