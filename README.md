@@ -35,7 +35,7 @@ uv sync
 
 ## 2. 端到端流程
 
-路径以服务器为例（`/home1/jiajunjie/...`），按实际改。所有命令在 moon-galbot 根目录跑。
+路径以服务器为例`/home1/jiajunjie/...`，按实际改。所有命令在 moon-galbot 根目录跑。
 
 ### 步骤 1 · 采数据（比赛现场，遥操作）
 录成 Galbot 的 `*.SYNC.mcap`（每条一集）。数据配方（关键，见 PLAN）：
