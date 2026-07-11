@@ -15,11 +15,10 @@ dependencies = [
     "torchvision==0.23.0",
 ]
 
-# 部署机不加载 dataset，datasets 用 locate-anything 要求的新版即可（推理不碰 datasets）。
-# 训练机加载 dataset 需 datasets==2.19（旧 lerobot rev 兼容，2.21 features 反序列化崩），
-# 重训前在此加回：
-#   [tool.uv]
-#   override-dependencies = ["datasets==2.19.0"]
+# datasets 统一钉 2.19：旧 lerobot rev 加载 dataset 只兼容它（2.21+ features 反序列化崩）。
+# locate-anything 声明 >=2.21 但推理不 import datasets，故强压；部署不调 datasets 功能，2.19 照跑。
+[tool.uv]
+override-dependencies = ["datasets==2.19.0"]
 
 [[tool.uv.index]]
 name = "tsinghua"
