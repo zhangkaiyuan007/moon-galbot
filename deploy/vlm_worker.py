@@ -55,6 +55,8 @@ class VLMWorker:
         from locateanything_worker import LocateAnythingWorker
         self.worker = LocateAnythingWorker(model_path, load_in_4bit=load_in_4bit)
         self.parse_boxes = LocateAnythingWorker.parse_boxes
+        self._bin_xy: XY = None          # bin 只首帧检测一次（篮子不动），之后每轮只检 target
+        self._bin_label_seen: str | None = None
 
     def _grab_head(self) -> Image.Image:
         from galbot_sdk.g1 import SensorType
@@ -86,8 +88,13 @@ class VLMWorker:
                 try:
                     img = self._grab_head()
                     t = self._detect(img, target_label)
-                    b = self._detect(img, bin_label) if bin_label else None
-                    self.shared.set_centers(t, b)
+                    if bin_label != self._bin_label_seen:  # 换了框标签 → 重新首帧检测
+                        self._bin_xy = None
+                        self._bin_label_seen = bin_label
+                    if bin_label and self._bin_xy is None:  # bin 只检一次，之后复用
+                        self._bin_xy = self._detect(img, bin_label)
+                    self.shared.set_centers(t, self._bin_xy)
+                    print(f"[vlm] target={t} bin={self._bin_xy}")  # 诊断：移动瓶子看 target 坐标变不变
                 except Exception as e:  # 检测偶发失败不该弄崩控制环
                     print(f"[vlm] detect error: {e}")
             self._stop.wait(max(0.0, self.period - (time.monotonic() - t0)))

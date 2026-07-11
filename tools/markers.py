@@ -15,6 +15,9 @@ import numpy as np
 TARGET_COLOR = (0, 255, 0)   # 目标物：绿
 BIN_COLOR = (0, 0, 255)      # 框：蓝
 RADIUS = 14                  # 原分辨率下半径(px)；0.5x resize 后约 7px
+# 纯点图模式：头相机输入=黑底+目标/框点，抹掉一切背景纹理，逼策略只能从点读位置
+# (对抗 causal confusion)。头相机只做全局定位，精抓靠腕相机。改了必须重跑阶段 B + 重训。
+MASK_BACKGROUND = True
 
 XY = tuple[float, float] | None
 
@@ -31,7 +34,7 @@ def draw_markers(
     """在 rgb 上画目标/框中心实心圆点，返回新图(不改分辨率)。None 的那个不画。"""
     import cv2
 
-    out = rgb.copy()
+    out = np.zeros_like(rgb) if MASK_BACKGROUND else rgb.copy()  # 纯点图=黑底
     for xy, color in ((target_xy, target_color), (bin_xy, bin_color)):
         if xy is None:
             continue

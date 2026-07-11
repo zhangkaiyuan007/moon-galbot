@@ -9,13 +9,30 @@ edge-tts 在线合成、输出 24k mp3，用系统 ffmpeg 转码。
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from typing import Callable
 
 VOICE = "zh-CN-XiaoyiNeural"
 CHUNK = 2560  # 字节；16k*16bit*mono 下 = 80ms/块，与 audio_example 一致
+
+CACHE_DIR = Path(__file__).resolve().parent / "tts_cache"  # 合成过的 PCM 存这，命中直接播（离线/零延迟）
+FIXED_PHRASES = [  # 固定话术；`--prebake` 有网时预烘焙，真机离线可用
+    "准备好了，请说要拿什么",
+    "我在，请说要拿什么",
+    "还没有目标，请先说要拿什么",
+    "没找到目标，请换个说法",
+    "好的，记住了",
+    "完成",
+]
+
+
+def _cache_path(text: str, voice: str) -> Path:
+    key = hashlib.md5(f"{voice}|{text}".encode("utf-8")).hexdigest()
+    return CACHE_DIR / f"{key}.pcm"
 
 
 def _synth_mp3(text: str, voice: str) -> bytes:
@@ -53,14 +70,36 @@ def make_tts(robot, stream_id: str = "robot_tts", voice: str = VOICE) -> Callabl
     assert shutil.which("ffmpeg"), "需要系统 ffmpeg（apt install ffmpeg）"
 
     def say(text: str) -> None:
+        cf = _cache_path(text, voice)
+        if cf.exists():  # 命中缓存：直接播，跳过在线合成/转码
+            _play(robot, cf.read_bytes(), stream_id)
+            return
         try:
             pcm = _mp3_to_pcm(_synth_mp3(text, voice))
         except Exception as e:  # 网络/合成/转码任一失败
             print(f"[tts] 合成失败，跳过播报: {e}")
             return
+        try:  # 写缓存失败不影响本次播报
+            CACHE_DIR.mkdir(exist_ok=True)
+            cf.write_bytes(pcm)
+        except Exception:
+            pass
         _play(robot, pcm, stream_id)
 
     return say
+
+
+def prebake(voice: str = VOICE) -> None:
+    """有网时把 FIXED_PHRASES 预合成到缓存，真机离线直接播。用法：uv run python deploy/tts.py --prebake"""
+    assert shutil.which("ffmpeg"), "需要系统 ffmpeg（apt install ffmpeg）"
+    CACHE_DIR.mkdir(exist_ok=True)
+    for t in FIXED_PHRASES:
+        cf = _cache_path(t, voice)
+        if cf.exists():
+            print(f"[skip] {t}")
+            continue
+        cf.write_bytes(_mp3_to_pcm(_synth_mp3(t, voice)))
+        print(f"[bake] {t}")
 
 
 def _selfcheck() -> None:
@@ -83,4 +122,8 @@ def _selfcheck() -> None:
 
 
 if __name__ == "__main__":
-    _selfcheck()
+    import sys
+    if "--prebake" in sys.argv:
+        prebake()
+    else:
+        _selfcheck()

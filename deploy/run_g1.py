@@ -87,6 +87,10 @@ def main() -> None:
     p.add_argument("--go-home", action="store_true", help="先回采集姿态")
     p.add_argument("--vlm-full", action="store_true",
                    help="VLM 用全精度 bf16(~6GB)；默认 4-bit 量化(~2GB) 以适配 8GB 显存")
+    p.add_argument("--save-vis", type=Path, default=None,
+                   help="把每帧带标记的头相机图存到此目录，看 VLM 识别结果是否和检测时一致")
+    p.add_argument("--record-frames", type=Path, default=None,
+                   help="把每帧原始(无标记)头相机帧存到此目录，供离线验证 2D tracker")
     p.add_argument("--slow", type=float, default=1.0)
     p.add_argument("--max-chunks", type=int, default=90)
     args = p.parse_args()
@@ -117,7 +121,12 @@ def main() -> None:
         policy = ACTPolicyWrapper(args.checkpoint)
         vlm = VLMWorker(robot, shared, args.model, args.la_repo, load_in_4bit=not args.vlm_full)
         vlm.start()
-        runtime = PolicyRuntime(robot, gm, policy, shared, mem, target_obj="", slow=args.slow)
+        if args.save_vis:
+            args.save_vis.mkdir(parents=True, exist_ok=True)
+        if args.record_frames:
+            args.record_frames.mkdir(parents=True, exist_ok=True)
+        runtime = PolicyRuntime(robot, gm, policy, shared, mem, target_obj="",
+                                slow=args.slow, vis_dir=args.save_vis, record_dir=args.record_frames)
         voice = None
 
         if args.target_label:

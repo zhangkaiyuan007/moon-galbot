@@ -36,6 +36,20 @@ def decode_rgb(compressed: dict) -> np.ndarray:
     return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
 
+# —— 2D 光流跟踪：填补 VLM(~0.4Hz)之间的空档，让标记按控制环频率跟手 ——
+_LK = dict(winSize=(21, 21), maxLevel=3,
+           criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01))
+
+
+def _feats_near(gray: np.ndarray, center, r: int = 40) -> np.ndarray:
+    """在 center 周围取角点作为 LK 跟踪集，多点中位数抗遮挡(手挡住部分点仍存活)。"""
+    x, y = int(center[0]), int(center[1])
+    mask = np.zeros(gray.shape, np.uint8)
+    cv2.circle(mask, (x, y), r, 255, -1)
+    pts = cv2.goodFeaturesToTrack(gray, maxCorners=40, qualityLevel=0.01, minDistance=3, mask=mask)
+    return pts if pts is not None else np.array([[[float(x), float(y)]]], np.float32)
+
+
 def chunk_is_safe(current: np.ndarray, chunk: np.ndarray) -> tuple[bool, str]:
     """拒绝过大的重规划跳变和 chunk 内步跳变（护栏，来自 bridge）。"""
     transit = float(np.abs(chunk[0, :7] - current).max())
@@ -108,7 +122,7 @@ class ACTPolicyWrapper:
 
 class PolicyRuntime:
     def __init__(self, robot, gm, policy: ACTPolicyWrapper, shared, correction,
-                 target_obj: str, slow: float = 1.0):
+                 target_obj: str, slow: float = 1.0, vis_dir=None, record_dir=None):
         self.robot = robot
         self.gm = gm
         self.policy = policy
@@ -119,6 +133,14 @@ class PolicyRuntime:
         self.grip_closed = False
         self.did_grasp = False
         self.still_chunks = 0
+        self.vis_dir = vis_dir  # 非 None 时每帧存带标记的头相机图，看 VLM 识别结果
+        self._vis_i = 0
+        self.record_dir = record_dir  # 非 None 时每帧存原始(无标记)头相机帧，供离线验证 2D tracker
+        self._rec_i = 0
+        self._prev_gray = None       # LK 跟踪状态
+        self._track_pts = None
+        self._track_center: tuple | None = None
+        self._last_gen = -1
 
     def _grab(self, sensor, tries: int = 15) -> dict:
         """相机偶发丢帧(返回无 'data')时重试等下一帧，避免 execute 中途崩。"""
@@ -129,13 +151,38 @@ class PolicyRuntime:
             time.sleep(0.02)
         raise RuntimeError(f"{sensor} 连续 {tries} 次无帧数据")
 
+    def _track(self, head_rgb: np.ndarray, vlm_xy, gen: int):
+        """LK 光流每帧跟随 target；VLM 出新结果(gen 变)时用其重置跟踪点纠偏，防漂移/跟到手上。"""
+        gray = cv2.cvtColor(head_rgb, cv2.COLOR_RGB2GRAY)
+        if gen != self._last_gen and vlm_xy is not None:  # VLM 纠偏帧：重置到语义真值
+            self._track_pts = _feats_near(gray, vlm_xy)
+            self._track_center = vlm_xy
+            self._last_gen = gen
+        elif self._track_pts is not None and self._prev_gray is not None:  # 空档帧：光流跟随
+            nxt, st, _ = cv2.calcOpticalFlowPyrLK(self._prev_gray, gray, self._track_pts, None, **_LK)
+            good = nxt[st.ravel() == 1].reshape(-1, 2) if st is not None else np.empty((0, 2))
+            if len(good) >= 3:  # 存活点够 → 中位数作中心；不够就保持上次(等下次 VLM 拉回)
+                self._track_center = (float(np.median(good[:, 0])), float(np.median(good[:, 1])))
+                self._track_pts = good.reshape(-1, 1, 2)
+        self._prev_gray = gray
+        return self._track_center
+
     def capture(self) -> tuple[dict, np.ndarray]:
         from galbot_sdk.g1 import SensorType
 
         head = decode_rgb(self._grab(SensorType.HEAD_LEFT_CAMERA))
-        target_xy, bin_xy, _ = self.shared.get_centers()
+        if self.record_dir is not None:  # 原始帧(画标记前)，控制环频率的连续帧，给 tracker 验证
+            cv2.imwrite(f"{self.record_dir}/frame_{self._rec_i:04d}.png",
+                        cv2.cvtColor(head, cv2.COLOR_RGB2BGR))
+            self._rec_i += 1
+        target_xy, bin_xy, gen = self.shared.get_centers()
+        target_xy = self._track(head, target_xy, gen)  # LK 高频跟随 + VLM 低频纠偏
         target_xy = self.correction.apply_offset(self.target_obj, target_xy)  # 修正偏移
         head = draw_markers(head, target_xy, bin_xy)                          # 原分辨率画点
+        if self.vis_dir is not None:  # 存原分辨率带标记图，比对 VLM 识别位置是否和检测时一致
+            cv2.imwrite(f"{self.vis_dir}/vis_{self._vis_i:04d}.png",
+                        cv2.cvtColor(head, cv2.COLOR_RGB2BGR))
+            self._vis_i += 1
         head = cv2.resize(head, HEAD_SIZE_WH, interpolation=cv2.INTER_AREA)
         wrist = decode_rgb(self._grab(SensorType.RIGHT_ARM_CAMERA))
         arm_q = np.array(self.robot.get_joint_positions([ARM_GROUP], []), dtype=np.float32)
