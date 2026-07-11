@@ -17,8 +17,8 @@ BIN_COLOR = (0, 0, 255)      # 框：蓝
 RADIUS = 14                  # 原分辨率下半径(px)；0.5x resize 后约 7px
 # 背景抹黑模式：只保留每个标记点周围一圈原图(留物体局部纹理)，其余抹黑，逼策略从点
 # 读位置(对抗 causal confusion)。KEEP_FRAC=0 就是纯点图。改了必须重训，且训练端一致。
-MASK_BACKGROUND = True
-KEEP_FRAC = 0.055            # 保留区半径 = 图宽 * 此值(点周围留一圈原图)；训练端必须同值
+MASK_BACKGROUND = False      # 关闭：mask 会连机械臂一起抹掉，策略看不到"手→目标"没法伺服
+KEEP_FRAC = 0.055            # 仅 MASK_BACKGROUND=True 时生效；保留区半径 = 图宽 * 此值
 
 XY = tuple[float, float] | None
 
