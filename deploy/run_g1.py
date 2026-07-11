@@ -144,18 +144,18 @@ def main() -> None:
             from tts import make_tts
             voice = VoiceMicClient(shared, mem, args.mic_addr, tts=make_tts(robot))
             voice.start()
-            voice.say("准备好了，请说要拿什么")
+            voice.say("準備好喇，你想攞啲咩")
             last_cmd = 0
             while robot.is_running():
                 cmd = shared.command_id()
                 if cmd != last_cmd:
                     last_cmd = cmd
                     if not wait_for_center(shared):
-                        voice.say("没找到目标，请换个说法")
+                        voice.say("搵唔到目標，唔該你換個講法")
                         continue
                     runtime.target_obj = voice.current_obj
                     runtime.run_episode(max_chunks=args.max_chunks, execute=args.execute)
-                    voice.say("完成")
+                    voice.say("搞掂")
                 time.sleep(0.2)
     finally:
         if robot is not None:

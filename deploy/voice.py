@@ -68,20 +68,20 @@ class VoiceMicClient:
             self.tts(text)
 
     def _handle_wakeup(self, data: dict | None = None) -> None:
-        self.say("我在，请说要拿什么")
+        self.say("我喺度，你想攞啲咩？")
 
     def _handle_label(self, label: str) -> None:
         kind, payload = route_label(label, self.object_labels, self.correction_labels)
         if kind == "target":
             self.current_obj = label
             self.shared.set_labels(payload, self.bin_label)
-            self.say(f"好的，去拿{DISPLAY_NAMES.get(label, label)}")
+            self.say(f"好，我去攞{DISPLAY_NAMES.get(label, label)}")
         elif kind == "correction":
             if self.current_obj is None:
-                self.say("还没有目标，请先说要拿什么")
+                self.say("仲未有目標，請你先講想攞咩。")
                 return
             self.correction.apply_hits(self.current_obj, [payload])
-            self.say("好的，记住了")
+            self.say("好，記低咗。")
 
     def _loop(self) -> None:
         import zmq

@@ -16,17 +16,17 @@ import time
 from pathlib import Path
 from typing import Callable
 
-VOICE = "zh-CN-XiaoyiNeural"
+VOICE = "zh-HK-HiuGaaiNeural"
 CHUNK = 2560  # 字节；16k*16bit*mono 下 = 80ms/块，与 audio_example 一致
 
 CACHE_DIR = Path(__file__).resolve().parent / "tts_cache"  # 合成过的 PCM 存这，命中直接播（离线/零延迟）
 FIXED_PHRASES = [  # 固定话术；`--prebake` 有网时预烘焙，真机离线可用
-    "准备好了，请说要拿什么",
-    "我在，请说要拿什么",
-    "还没有目标，请先说要拿什么",
-    "没找到目标，请换个说法",
-    "好的，记住了",
-    "完成",
+    "準備好喇，你想攞啲咩？",
+    "我喺度，你想攞啲咩？",
+    "仲未有目標，請你先講想攞咩。",
+    "搵唔到目標，唔該你換個講法。",
+    "好，記低咗。",
+    "搞掂。",
 ]
 
 
