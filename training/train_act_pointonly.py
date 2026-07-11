@@ -46,7 +46,8 @@ def _point_only(img_chw: torch.Tensor) -> torch.Tensor:
     for c in (cg, cb):
         if c is not None:
             cv2.circle(keep, c, keep_r, 1, -1)
-    out = np.where(keep[..., None] > 0, a, 0).astype(np.uint8)
+    out = a.copy()                                # copy 保证 C 连续，cv2.circle 才认
+    out[keep == 0] = 0
     for c, color in ((cg, (0, 255, 0)), (cb, (0, 0, 255))):
         if c is not None:
             cv2.circle(out, c, rad, color, thickness=-1)
