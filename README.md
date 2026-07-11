@@ -5,7 +5,7 @@ tools/        数据处理（mcap → 带标记的 lerobot 数据集）
   galbot_mcap.py            读 SYNC mcap + 时间对齐 + 8维 state/action（库）
   markers.py               纯 cv2 画点 + ZOH（训练/部署共用，保证一致）
   detect_markers.py        阶段A：locate-anything 逐帧检测 → detections/*.parquet
-  convert_mcap_to_lerobot.py 阶段B：mcap + detections → lerobot 数据集（h264）
+  convert_mcap_to_lerobot.py 阶段B：mcap + detections → lerobot 数据集
   preview_markers.py       检查阶段A：把中心画回真实帧 + 打印漏检率
 training/
   train_act.sh             lerobot 原生 ACT 训练启动
