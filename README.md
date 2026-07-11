@@ -50,7 +50,7 @@ uv run python tools/detect_markers.py \
   --target-label "cola bottle" --bin-label "basket" \
   --model /home1/jiajunjie/LocateAnything-3B --max-episodes 1
 ```
-先 1 条，没问题再去掉 `--max-episodes` 全量。多物体数据每条传各自 `--target-label`。`--la-repo` 默认自动推导（上一级 eagle/Embodied），不对再手动指。
+先 1 条，没问题再去掉 `--max-episodes` 全量。多物体数据每条传各自 `--target-label`。`--la-repo` 默认自动推导，不对再手动指。
 
 ### 步骤 2.5 · 检查检测效果
 ```bash
