@@ -113,7 +113,7 @@ uv run python deploy/run_g1.py \
 
 ---
 
-## 3. 传输到新机器（rsync）
+## 3. 传输到新机器
 ```bash
 # 项目（排除 .venv/产物；靠 uv sync 重建环境）
 rsync -avz --exclude='.venv' --exclude='__pycache__' --exclude='detections' \
