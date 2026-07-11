@@ -10,11 +10,15 @@ dependencies = [
     "mcap>=1.4.0",
     "mcap-protobuf-support>=0.5.4",
     "numpy<2",              # locate-anything 要求；git-lerobot 不钉 numpy，兼容
-    "datasets==2.19.0",     # 写死：旧 lerobot rev 只兼容此版；2.21 的 features 反序列化会崩
     "setuptools>=83.0.0",   # triton 运行时 JIT 构建需要，uv 不默认装
     "torch==2.8.0",         # cu128 build：Blackwell/sm_120 (RTX 5060) 需要，2.6/cu124 无 sm_120 kernel
     "torchvision==0.23.0",
 ]
+
+# locate-anything 声明 datasets>=2.21，但其推理不 import datasets；而旧 lerobot rev 加载
+# 数据集只兼容 2.19(2.21 features 反序列化崩)。强压 datasets 到 2.19，无视 locate-anything。
+[tool.uv]
+override-dependencies = ["datasets==2.19.0"]
 
 [[tool.uv.index]]
 name = "tsinghua"
